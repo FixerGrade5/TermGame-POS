@@ -133,36 +133,36 @@ export default function HistoryPage() {
             </thead>
 
             <tbody>
-              {sales.map((sale) => (
-                <tr key={sale.id}>
-                  {/* วันเวลาขาย */}
-                  <td>
-                    {formatDate(sale.sold_at)}
-                  </td>
+  {sales.map((sale) => (
+    <tr key={sale.id}>
+      <td>
+        {formatDate(sale.sold_at)}
+      </td>
 
-                  {/* ชื่อสินค้า */}
-                  <td>
-                    {sale.product_name}
-                  </td>
+      <td>
+        {sale.product_sku || '-'}
+      </td>
 
-                  {/* จำนวน */}
-                  <td>
-                    {sale.quantity}
-                  </td>
+      <td>
+        {sale.product_name || '-'}
+      </td>
 
-                  {/* ยอดรวม */}
-                  <td>
-                    {Number(
-                      sale.total_price || 0
-                    ).toLocaleString('th-TH', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}{' '}
-                    บาท
-                  </td>
-                </tr>
-              ))}
-            </tbody>
+      <td>
+        {sale.quantity ?? 0}
+      </td>
+
+      <td>
+        {Number(
+          sale.total_price || 0
+        ).toLocaleString('th-TH', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}{' '}
+        บาท
+      </td>
+    </tr>
+  ))}
+</tbody>
           </table>
         </div>
       )}
