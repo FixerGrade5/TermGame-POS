@@ -4,21 +4,14 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 
 export default function HistoryPage() {
-  // เก็บรายการประวัติการขาย
   const [sales, setSales] = useState([]);
-
-  // สถานะโหลดข้อมูล
   const [loading, setLoading] = useState(true);
-
-  // ข้อความ Error
   const [error, setError] = useState('');
 
-  // โหลดประวัติการขายเมื่อเปิดหน้า
   useEffect(() => {
     fetchSales();
   }, []);
 
-  // ดึงข้อมูลจากตาราง sales เรียงล่าสุดไปเก่าสุด
   async function fetchSales() {
     setLoading(true);
     setError('');
@@ -33,6 +26,7 @@ export default function HistoryPage() {
         'ไม่สามารถโหลดประวัติการขายได้: ' +
           error.message
       );
+
       setSales([]);
     } else {
       setSales(data || []);
@@ -41,13 +35,12 @@ export default function HistoryPage() {
     setLoading(false);
   }
 
-  // คำนวณยอดขายรวมทั้งหมด
   const totalSales = sales.reduce(
-    (sum, sale) => sum + Number(sale.total_price || 0),
+    (sum, sale) =>
+      sum + Number(sale.total_price || 0),
     0
   );
 
-  // แปลงวันที่ให้อ่านง่าย
   function formatDate(date) {
     if (!date) return '-';
 
@@ -62,10 +55,9 @@ export default function HistoryPage() {
       <h1>ประวัติการขาย</h1>
 
       <p className="text-muted">
-        รายการขายสินค้าทั้งหมดของร้าน
+        รายการเติมเกมทั้งหมด
       </p>
 
-      {/* สรุปยอดขายรวม */}
       <div
         className="card"
         style={{
@@ -92,11 +84,10 @@ export default function HistoryPage() {
         </div>
 
         <div className="text-muted">
-          จำนวนรายการขาย {sales.length} รายการ
+          จำนวนรายการ {sales.length} รายการ
         </div>
       </div>
 
-      {/* แสดง Error */}
       {error && (
         <div
           className="card text-danger"
@@ -111,7 +102,6 @@ export default function HistoryPage() {
 
       <h2>รายการขาย</h2>
 
-      {/* ตารางประวัติการขาย */}
       {loading ? (
         <div className="loading">
           กำลังโหลดประวัติการขาย...
@@ -126,43 +116,44 @@ export default function HistoryPage() {
             <thead>
               <tr>
                 <th>วันเวลาที่ขาย</th>
-                <th>ชื่อสินค้า</th>
+                <th>SKU</th>
+                <th>สินค้า</th>
                 <th>จำนวน</th>
                 <th>ยอดรวม</th>
               </tr>
             </thead>
 
             <tbody>
-  {sales.map((sale) => (
-    <tr key={sale.id}>
-      <td>
-        {formatDate(sale.sold_at)}
-      </td>
+              {sales.map((sale) => (
+                <tr key={sale.id}>
+                  <td>
+                    {formatDate(sale.sold_at)}
+                  </td>
 
-      <td>
-        {sale.product_sku || '-'}
-      </td>
+                  <td>
+                    {sale.product_sku || '-'}
+                  </td>
 
-      <td>
-        {sale.product_name || '-'}
-      </td>
+                  <td>
+                    {sale.product_name || '-'}
+                  </td>
 
-      <td>
-        {sale.quantity ?? 0}
-      </td>
+                  <td>
+                    {sale.quantity ?? 0}
+                  </td>
 
-      <td>
-        {Number(
-          sale.total_price || 0
-        ).toLocaleString('th-TH', {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        })}{' '}
-        บาท
-      </td>
-    </tr>
-  ))}
-</tbody>
+                  <td>
+                    {Number(
+                      sale.total_price || 0
+                    ).toLocaleString('th-TH', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}{' '}
+                    บาท
+                  </td>
+                </tr>
+              ))}
+            </tbody>
           </table>
         </div>
       )}
