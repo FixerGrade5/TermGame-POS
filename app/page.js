@@ -6,9 +6,6 @@ import { supabase } from '../lib/supabaseClient';
 export default function HomePage() {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState('');
-  const [search, setSearch] = useState('');
-  const [gameFilter, setGameFilter] = useState('ทั้งหมด');
 
   const [form, setForm] = useState({
     sku: '',
@@ -17,11 +14,24 @@ export default function HomePage() {
     package_name: '',
     price: '',
     category: 'STANDARD',
+    stock: 0,
     active: true,
   });
 
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
   const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({});
+
+  const [editForm, setEditForm] = useState({
+    sku: '',
+    game: '',
+    server: '',
+    package_name: '',
+    price: '',
+    category: 'STANDARD',
+    stock: 0,
+    active: true,
+  });
 
   useEffect(() => {
     fetchProducts();
@@ -29,18 +39,18 @@ export default function HomePage() {
 
   async function fetchProducts() {
     setLoading(true);
-    setMessage('');
+    setError('');
 
     const { data, error } = await supabase
       .from('products')
       .select(
-        'id, sku, game, server, package_name, price, category, active, created_at'
+        'id, sku, game, server, package_name, price, category, stock, active, created_at'
       )
       .order('game', { ascending: true })
       .order('price', { ascending: true });
 
     if (error) {
-      setMessage('ไม่สามารถโหลดสินค้าได้: ' + error.message);
+      setError('โหลดสินค้าไม่สำเร็จ: ' + error.message);
       setProducts([]);
     } else {
       setProducts(data || []);
@@ -49,52 +59,45 @@ export default function HomePage() {
     setLoading(false);
   }
 
-  function handleFormChange(e) {
+  function handleChange(e) {
     const { name, value, type, checked } = e.target;
 
-    setForm((prev) => ({
-      ...prev,
+    setForm({
+      ...form,
       [name]: type === 'checkbox' ? checked : value,
-    }));
+    });
   }
 
-  async function handleAddProduct(e) {
+  async function handleAdd(e) {
     e.preventDefault();
-    setMessage('');
 
-    if (
-      !form.sku ||
-      !form.game ||
-      !form.server ||
-      !form.package_name ||
-      form.price === ''
-    ) {
-      setMessage('กรุณากรอกข้อมูลสินค้าให้ครบ');
+    setMessage('');
+    setError('');
+
+    if (!form.sku || !form.game || !form.server || !form.package_name) {
+      setError('กรุณากรอกข้อมูลให้ครบ');
       return;
     }
 
-    const { data, error } = await supabase
-      .from('products')
-      .insert([
-        {
-          sku: form.sku.trim(),
-          game: form.game.trim(),
-          server: form.server.trim(),
-          package_name: form.package_name.trim(),
-          price: Number(form.price),
-          category: form.category || 'STANDARD',
-          active: form.active,
-        },
-      ])
-      .select()
-      .single();
+    const { error } = await supabase.from('products').insert([
+      {
+        sku: form.sku,
+        game: form.game,
+        server: form.server,
+        package_name: form.package_name,
+        price: form.price === '' ? null : Number(form.price),
+        category: form.category,
+        stock: Number(form.stock) || 0,
+        active: form.active,
+      },
+    ]);
 
     if (error) {
-      setMessage('เพิ่มสินค้าไม่สำเร็จ: ' + error.message);
+      setError('เพิ่มสินค้าไม่สำเร็จ: ' + error.message);
       return;
     }
 
-    setProducts((prev) => [...prev, data]);
+    setMessage('เพิ่มสินค้าเรียบร้อย');
 
     setForm({
       sku: '',
@@ -103,10 +106,11 @@ export default function HomePage() {
       package_name: '',
       price: '',
       category: 'STANDARD',
+      stock: 0,
       active: true,
     });
 
-    setMessage('เพิ่มสินค้าสำเร็จ');
+    fetchProducts();
   }
 
   function startEdit(product) {
@@ -119,74 +123,61 @@ export default function HomePage() {
       package_name: product.package_name || '',
       price: product.price ?? '',
       category: product.category || 'STANDARD',
+      stock: product.stock ?? 0,
       active: product.active ?? true,
     });
 
     setMessage('');
+    setError('');
   }
 
   function handleEditChange(e) {
     const { name, value, type, checked } = e.target;
 
-    setEditForm((prev) => ({
-      ...prev,
+    setEditForm({
+      ...editForm,
       [name]: type === 'checkbox' ? checked : value,
-    }));
+    });
   }
 
-  function cancelEdit() {
-    setEditingId(null);
-    setEditForm({});
-  }
+  async function saveEdit(id) {
+    setMessage('');
+    setError('');
 
-  async function handleUpdateProduct(id) {
-    if (
-      !editForm.sku ||
-      !editForm.game ||
-      !editForm.server ||
-      !editForm.package_name ||
-      editForm.price === ''
-    ) {
-      setMessage('กรุณากรอกข้อมูลสินค้าให้ครบ');
-      return;
-    }
-
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('products')
       .update({
-        sku: editForm.sku.trim(),
-        game: editForm.game.trim(),
-        server: editForm.server.trim(),
-        package_name: editForm.package_name.trim(),
-        price: Number(editForm.price),
-        category: editForm.category || 'STANDARD',
+        sku: editForm.sku,
+        game: editForm.game,
+        server: editForm.server,
+        package_name: editForm.package_name,
+        price: editForm.price === '' ? null : Number(editForm.price),
+        category: editForm.category,
+        stock: Number(editForm.stock) || 0,
         active: editForm.active,
       })
-      .eq('id', id)
-      .select()
-      .single();
+      .eq('id', id);
 
     if (error) {
-      setMessage('แก้ไขสินค้าไม่สำเร็จ: ' + error.message);
+      setError('แก้ไขสินค้าไม่สำเร็จ: ' + error.message);
       return;
     }
 
-    setProducts((prev) =>
-      prev.map((product) =>
-        product.id === id ? data : product
-      )
-    );
+    setMessage('แก้ไขสินค้าเรียบร้อย');
+    setEditingId(null);
 
-    cancelEdit();
-    setMessage('แก้ไขสินค้าสำเร็จ');
+    fetchProducts();
   }
 
-  async function handleDeleteProduct(id) {
-    const confirmed = window.confirm(
+  async function deleteProduct(id) {
+    const confirmDelete = window.confirm(
       'ต้องการลบสินค้านี้ใช่หรือไม่?'
     );
 
-    if (!confirmed) return;
+    if (!confirmDelete) return;
+
+    setMessage('');
+    setError('');
 
     const { error } = await supabase
       .from('products')
@@ -194,53 +185,98 @@ export default function HomePage() {
       .eq('id', id);
 
     if (error) {
-      setMessage('ลบสินค้าไม่สำเร็จ: ' + error.message);
+      setError('ลบสินค้าไม่สำเร็จ: ' + error.message);
       return;
     }
 
-    setProducts((prev) =>
-      prev.filter((product) => product.id !== id)
-    );
+    setMessage('ลบสินค้าเรียบร้อย');
 
-    setMessage('ลบสินค้าสำเร็จ');
+    fetchProducts();
   }
 
-  const games = [
-    'ทั้งหมด',
-    ...Array.from(
-      new Set(products.map((product) => product.game))
-    ),
-  ];
+  // =========================
+  // สรุปข้อมูล
+  // =========================
 
-  const filteredProducts = products.filter((product) => {
-    const matchesGame =
-      gameFilter === 'ทั้งหมด' ||
-      product.game === gameFilter;
+  const totalProducts = products.length;
 
-    const keyword = search.toLowerCase();
+  const totalStock = products.reduce(
+    (sum, product) => sum + Number(product.stock || 0),
+    0
+  );
 
-    const matchesSearch =
-      !keyword ||
-      product.sku?.toLowerCase().includes(keyword) ||
-      product.game?.toLowerCase().includes(keyword) ||
-      product.server?.toLowerCase().includes(keyword) ||
-      product.package_name?.toLowerCase().includes(keyword);
+  const activeProducts = products.filter(
+    (product) => product.active
+  ).length;
 
-    return matchesGame && matchesSearch;
-  });
+  const totalGames = new Set(
+    products.map((product) => product.game)
+  ).size;
 
   return (
-    <div>
-      <h1>จัดการสินค้าเติมเกม</h1>
+    <main
+      style={{
+        maxWidth: '1200px',
+        margin: '0 auto',
+        padding: '30px 20px',
+        fontFamily: 'Arial, sans-serif',
+      }}
+    >
+      <h1>Game Top-up POS</h1>
 
-      <p className="text-muted">
-        เพิ่ม แก้ไข เปิด/ปิด และลบแพ็กเกจเติมเกม
-      </p>
+      {/* =========================
+          SUMMARY
+      ========================= */}
 
-      <div className="card" style={{ marginBottom: '24px' }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns:
+            'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: '15px',
+          marginBottom: '30px',
+        }}
+      >
+        <SummaryCard
+          title="สินค้าทั้งหมด"
+          value={totalProducts}
+          unit="รายการ"
+        />
+
+        <SummaryCard
+          title="สินค้าคงเหลือ"
+          value={totalStock}
+          unit="ชิ้น"
+        />
+
+        <SummaryCard
+          title="เปิดขายอยู่"
+          value={activeProducts}
+          unit="รายการ"
+        />
+
+        <SummaryCard
+          title="จำนวนเกม"
+          value={totalGames}
+          unit="เกม"
+        />
+      </div>
+
+      {/* =========================
+          ADD PRODUCT
+      ========================= */}
+
+      <section
+        style={{
+          border: '1px solid #ddd',
+          borderRadius: '12px',
+          padding: '20px',
+          marginBottom: '30px',
+        }}
+      >
         <h2>เพิ่มสินค้า</h2>
 
-        <form onSubmit={handleAddProduct}>
+        <form onSubmit={handleAdd}>
           <div
             style={{
               display: 'grid',
@@ -249,319 +285,266 @@ export default function HomePage() {
               gap: '12px',
             }}
           >
-            <div className="form-group">
-              <label>SKU</label>
-              <input
-                name="sku"
-                value={form.sku}
-                onChange={handleFormChange}
-                placeholder="GI-AS-60"
-              />
-            </div>
+            <input
+              name="sku"
+              placeholder="SKU"
+              value={form.sku}
+              onChange={handleChange}
+            />
 
-            <div className="form-group">
-              <label>เกม</label>
-              <input
-                name="game"
-                value={form.game}
-                onChange={handleFormChange}
-                placeholder="Genshin Impact"
-              />
-            </div>
+            <input
+              name="game"
+              placeholder="ชื่อเกม"
+              value={form.game}
+              onChange={handleChange}
+            />
 
-            <div className="form-group">
-              <label>Server</label>
-              <input
-                name="server"
-                value={form.server}
-                onChange={handleFormChange}
-                placeholder="Asia"
-              />
-            </div>
+            <input
+              name="server"
+              placeholder="Server"
+              value={form.server}
+              onChange={handleChange}
+            />
 
-            <div className="form-group">
-              <label>แพ็กเกจ</label>
-              <input
-                name="package_name"
-                value={form.package_name}
-                onChange={handleFormChange}
-                placeholder="60 Genesis Crystals"
-              />
-            </div>
+            <input
+              name="package_name"
+              placeholder="ชื่อแพ็กเกจ"
+              value={form.package_name}
+              onChange={handleChange}
+            />
 
-            <div className="form-group">
-              <label>ราคา</label>
-              <input
-                type="number"
-                name="price"
-                value={form.price}
-                onChange={handleFormChange}
-                min="0"
-                step="0.01"
-                placeholder="32"
-              />
-            </div>
+            <input
+              name="price"
+              type="number"
+              placeholder="ราคา"
+              value={form.price}
+              onChange={handleChange}
+            />
 
-            <div className="form-group">
-              <label>ประเภท</label>
-              <select
-                name="category"
-                value={form.category}
-                onChange={handleFormChange}
-              >
-                <option value="STANDARD">STANDARD</option>
-                <option value="POPULAR">POPULAR</option>
-                <option value="MONTHLY">MONTHLY</option>
-                <option value="CONTACT_ADMIN">
-                  CONTACT_ADMIN
-                </option>
-              </select>
-            </div>
+            <input
+              name="stock"
+              type="number"
+              min="0"
+              placeholder="จำนวนคงเหลือ"
+              value={form.stock}
+              onChange={handleChange}
+            />
+
+            <select
+              name="category"
+              value={form.category}
+              onChange={handleChange}
+            >
+              <option value="STANDARD">STANDARD</option>
+              <option value="POPULAR">POPULAR</option>
+              <option value="MONTHLY">MONTHLY</option>
+              <option value="CONTACT_ADMIN">
+                CONTACT_ADMIN
+              </option>
+            </select>
+
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+              }}
+            >
+              <input
+                type="checkbox"
+                name="active"
+                checked={form.active}
+                onChange={handleChange}
+              />
+              เปิดขาย
+            </label>
           </div>
 
-          <label
+          <button
+            type="submit"
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              marginBottom: '16px',
+              marginTop: '15px',
+              padding: '10px 20px',
+              cursor: 'pointer',
             }}
           >
-            <input
-              type="checkbox"
-              name="active"
-              checked={form.active}
-              onChange={handleFormChange}
-              style={{ width: 'auto' }}
-            />
-            เปิดขายสินค้า
-          </label>
-
-          <button className="btn" type="submit">
             เพิ่มสินค้า
           </button>
         </form>
-      </div>
+      </section>
 
       {message && (
-        <div
-          className="card"
-          style={{ marginBottom: '20px' }}
-        >
+        <p style={{ color: 'green' }}>
           {message}
-        </div>
+        </p>
       )}
 
-      <div
-        className="card"
-        style={{ marginBottom: '20px' }}
-      >
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns:
-              'minmax(200px, 1fr) 220px',
-            gap: '12px',
-          }}
-        >
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="ค้นหา SKU, เกม, Server หรือแพ็กเกจ..."
-          />
+      {error && (
+        <p style={{ color: 'red' }}>
+          {error}
+        </p>
+      )}
 
-          <select
-            value={gameFilter}
-            onChange={(e) => setGameFilter(e.target.value)}
-          >
-            {games.map((game) => (
-              <option key={game} value={game}>
-                {game}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+      {/* =========================
+          PRODUCT TABLE
+      ========================= */}
 
-      {loading ? (
-        <div className="loading">
-          กำลังโหลดสินค้า...
-        </div>
-      ) : filteredProducts.length === 0 ? (
-        <div className="card empty">
-          ยังไม่มีสินค้าที่ตรงกับเงื่อนไข
-        </div>
-      ) : (
-        <div className="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>SKU</th>
-                <th>เกม</th>
-                <th>Server</th>
-                <th>แพ็กเกจ</th>
-                <th>ราคา</th>
-                <th>ประเภท</th>
-                <th>สถานะ</th>
-                <th>จัดการ</th>
-              </tr>
-            </thead>
+      <section>
+        <h2>รายการสินค้า</h2>
 
-            <tbody>
-              {filteredProducts.map((product) => (
-                <tr key={product.id}>
-                  {editingId === product.id ? (
-                    <>
-                      <td>
-                        <input
-                          name="sku"
-                          value={editForm.sku}
-                          onChange={handleEditChange}
-                        />
-                      </td>
+        {loading ? (
+          <p>กำลังโหลด...</p>
+        ) : products.length === 0 ? (
+          <p>ยังไม่มีสินค้า</p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table
+              border="1"
+              cellPadding="10"
+              style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+              }}
+            >
+              <thead>
+                <tr>
+                  <th>SKU</th>
+                  <th>เกม</th>
+                  <th>Server</th>
+                  <th>แพ็กเกจ</th>
+                  <th>ราคา</th>
+                  <th>คงเหลือ</th>
+                  <th>สถานะ</th>
+                  <th>จัดการ</th>
+                </tr>
+              </thead>
 
-                      <td>
-                        <input
-                          name="game"
-                          value={editForm.game}
-                          onChange={handleEditChange}
-                        />
-                      </td>
-
-                      <td>
-                        <input
-                          name="server"
-                          value={editForm.server}
-                          onChange={handleEditChange}
-                        />
-                      </td>
-
-                      <td>
-                        <input
-                          name="package_name"
-                          value={editForm.package_name}
-                          onChange={handleEditChange}
-                        />
-                      </td>
-
-                      <td>
-                        <input
-                          type="number"
-                          name="price"
-                          value={editForm.price}
-                          onChange={handleEditChange}
-                          min="0"
-                          step="0.01"
-                        />
-                      </td>
-
-                      <td>
-                        <select
-                          name="category"
-                          value={editForm.category}
-                          onChange={handleEditChange}
-                        >
-                          <option value="STANDARD">
-                            STANDARD
-                          </option>
-                          <option value="POPULAR">
-                            POPULAR
-                          </option>
-                          <option value="MONTHLY">
-                            MONTHLY
-                          </option>
-                          <option value="CONTACT_ADMIN">
-                            CONTACT_ADMIN
-                          </option>
-                        </select>
-                      </td>
-
-                      <td>
-                        <label
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '5px',
-                          }}
-                        >
+              <tbody>
+                {products.map((product) => (
+                  <tr key={product.id}>
+                    {editingId === product.id ? (
+                      <>
+                        <td>
                           <input
-                            type="checkbox"
-                            name="active"
-                            checked={editForm.active}
+                            name="sku"
+                            value={editForm.sku}
                             onChange={handleEditChange}
-                            style={{ width: 'auto' }}
                           />
-                          เปิด
-                        </label>
-                      </td>
+                        </td>
 
-                      <td>
-                        <div
-                          style={{
-                            display: 'flex',
-                            gap: '6px',
-                          }}
-                        >
+                        <td>
+                          <input
+                            name="game"
+                            value={editForm.game}
+                            onChange={handleEditChange}
+                          />
+                        </td>
+
+                        <td>
+                          <input
+                            name="server"
+                            value={editForm.server}
+                            onChange={handleEditChange}
+                          />
+                        </td>
+
+                        <td>
+                          <input
+                            name="package_name"
+                            value={editForm.package_name}
+                            onChange={handleEditChange}
+                          />
+                        </td>
+
+                        <td>
+                          <input
+                            name="price"
+                            type="number"
+                            value={editForm.price}
+                            onChange={handleEditChange}
+                          />
+                        </td>
+
+                        <td>
+                          <input
+                            name="stock"
+                            type="number"
+                            min="0"
+                            value={editForm.stock}
+                            onChange={handleEditChange}
+                          />
+                        </td>
+
+                        <td>
+                          <label>
+                            <input
+                              type="checkbox"
+                              name="active"
+                              checked={editForm.active}
+                              onChange={handleEditChange}
+                            />
+                            เปิดขาย
+                          </label>
+                        </td>
+
+                        <td>
                           <button
-                            className="btn"
                             onClick={() =>
-                              handleUpdateProduct(product.id)
+                              saveEdit(product.id)
                             }
                           >
                             บันทึก
                           </button>
 
                           <button
-                            className="btn"
-                            onClick={cancelEdit}
-                            type="button"
+                            onClick={() =>
+                              setEditingId(null)
+                            }
+                            style={{ marginLeft: '5px' }}
                           >
                             ยกเลิก
                           </button>
-                        </div>
-                      </td>
-                    </>
-                  ) : (
-                    <>
-                      <td>{product.sku}</td>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td>{product.sku}</td>
 
-                      <td>{product.game}</td>
+                        <td>{product.game}</td>
 
-                      <td>{product.server}</td>
+                        <td>{product.server}</td>
 
-                      <td>{product.package_name}</td>
+                        <td>{product.package_name}</td>
 
-                      <td>
-                        {product.price === null
-                          ? 'สอบถามราคา'
-                          : `${Number(
-                              product.price
-                            ).toLocaleString('th-TH')} บาท`}
-                      </td>
+                        <td>
+                          {product.price === null
+                            ? 'สอบถามราคา'
+                            : `฿${Number(
+                                product.price
+                              ).toLocaleString()}`}
+                        </td>
 
-                      <td>{product.category}</td>
+                        <td>
+                          <strong
+                            style={{
+                              color:
+                                Number(product.stock) <= 0
+                                  ? 'red'
+                                  : 'green',
+                            }}
+                          >
+                            {product.stock || 0}
+                          </strong>
+                        </td>
 
-                      <td>
-                        {product.active ? (
-                          <span className="text-success">
-                            เปิดขาย
-                          </span>
-                        ) : (
-                          <span className="text-danger">
-                            ปิดขาย
-                          </span>
-                        )}
-                      </td>
+                        <td>
+                          {product.active
+                            ? 'เปิดขาย'
+                            : 'ปิดขาย'}
+                        </td>
 
-                      <td>
-                        <div
-                          style={{
-                            display: 'flex',
-                            gap: '6px',
-                          }}
-                        >
+                        <td>
                           <button
-                            className="btn"
                             onClick={() =>
                               startEdit(product)
                             }
@@ -570,23 +553,67 @@ export default function HomePage() {
                           </button>
 
                           <button
-                            className="btn"
                             onClick={() =>
-                              handleDeleteProduct(product.id)
+                              deleteProduct(product.id)
                             }
+                            style={{
+                              marginLeft: '5px',
+                            }}
                           >
                             ลบ
                           </button>
-                        </div>
-                      </td>
-                    </>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </main>
+  );
+}
+
+function SummaryCard({ title, value, unit }) {
+  return (
+    <div
+      style={{
+        border: '1px solid #ddd',
+        borderRadius: '12px',
+        padding: '20px',
+        background: '#fff',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
+      }}
+    >
+      <div
+        style={{
+          fontSize: '14px',
+          color: '#666',
+          marginBottom: '8px',
+        }}
+      >
+        {title}
+      </div>
+
+      <div
+        style={{
+          fontSize: '30px',
+          fontWeight: 'bold',
+        }}
+      >
+        {Number(value).toLocaleString()}
+      </div>
+
+      <div
+        style={{
+          fontSize: '13px',
+          color: '#777',
+        }}
+      >
+        {unit}
+      </div>
     </div>
   );
 }
