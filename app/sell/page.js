@@ -57,6 +57,38 @@ export default function SellPage() {
       ? Number(selectedProduct.price) * Number(quantity)
       : 0;
 
+  async function sendTelegramNotification(notificationData) {
+    try {
+      const response = await fetch('/api/telegram', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(notificationData),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        console.error(
+          'Telegram notification failed:',
+          result?.error || 'Unknown error'
+        );
+
+        return false;
+      }
+
+      return true;
+    } catch (telegramError) {
+      console.error(
+        'Telegram notification error:',
+        telegramError
+      );
+
+      return false;
+    }
+  }
+
   async function handleSell(e) {
     e.preventDefault();
 
@@ -75,12 +107,14 @@ export default function SellPage() {
 
     const sellQuantity = Number(quantity);
 
-    if (!Number.isInteger(sellQuantity) || sellQuantity <= 0) {
+    if (
+      !Number.isInteger(sellQuantity) ||
+      sellQuantity <= 0
+    ) {
       setError('จำนวนต้องเป็นเลขจำนวนเต็มมากกว่า 0');
       return;
     }
 
-    // ตรวจสอบ Stock
     if (sellQuantity > stock) {
       setError(
         `สินค้าไม่เพียงพอ คงเหลือ ${stock} ชิ้น`
@@ -90,7 +124,8 @@ export default function SellPage() {
 
     setSelling(true);
 
-    const total = Number(selectedProduct.price) * sellQuantity;
+    const total =
+      Number(selectedProduct.price) * sellQuantity;
 
     // ==========================================
     // 1. บันทึกประวัติการขาย
@@ -120,7 +155,7 @@ export default function SellPage() {
     }
 
     // ==========================================
-    // 2. หัก Stock
+    // 2. ตัด Stock
     // ==========================================
 
     const newStock = stock - sellQuantity;
@@ -134,7 +169,7 @@ export default function SellPage() {
 
     if (stockError) {
       setError(
-        'บันทึกการขายแล้ว แต่หัก Stock ไม่สำเร็จ: ' +
+        'บันทึกการขายแล้ว แต่ตัด Stock ไม่สำเร็จ: ' +
           stockError.message
       );
 
@@ -143,7 +178,39 @@ export default function SellPage() {
     }
 
     // ==========================================
-    // 3. แสดงผลสำเร็จ
+    // 3. แจ้ง Telegram - Order เข้า
+    // ==========================================
+
+    const currentTime = new Date().toLocaleString(
+      'th-TH',
+      {
+        timeZone: 'Asia/Bangkok',
+      }
+    );
+
+    await sendTelegramNotification({
+      type: 'new_order',
+      productName: `${selectedProduct.game} - ${selectedProduct.package_name}`,
+      quantity: sellQuantity,
+      totalPrice: total,
+      remainingStock: newStock,
+      time: currentTime,
+    });
+
+    // ==========================================
+    // 4. แจ้ง Telegram - Stock เหลือน้อย
+    // ==========================================
+
+    if (newStock <= 5) {
+      await sendTelegramNotification({
+        type: 'low_stock',
+        productName: `${selectedProduct.game} - ${selectedProduct.package_name}`,
+        remainingStock: newStock,
+      });
+    }
+
+    // ==========================================
+    // 5. แจ้งผลสำเร็จบนเว็บไซต์
     // ==========================================
 
     setMessage(
@@ -263,8 +330,7 @@ export default function SellPage() {
               </p>
 
               <p>
-                <strong>ราคาต่อชิ้น:</strong>{' '}
-                ฿
+                <strong>ราคาต่อชิ้น:</strong> ฿
                 {Number(
                   selectedProduct.price || 0
                 ).toLocaleString()}
