@@ -5,10 +5,7 @@ import { supabase } from '../../lib/supabaseClient';
 
 export default function SellPage() {
   const [products, setProducts] = useState([]);
-
-  const [selectedProductId, setSelectedProductId] =
-    useState('');
-
+  const [selectedProductId, setSelectedProductId] = useState('');
   const [quantity, setQuantity] = useState(1);
 
   const [loading, setLoading] = useState(true);
@@ -28,16 +25,14 @@ export default function SellPage() {
     const { data, error } = await supabase
       .from('products')
       .select(
-        'id, sku, game, server, package_name, price, category, active'
+        'id, sku, game, server, package_name, price, category, stock, active'
       )
       .eq('active', true)
       .order('game', { ascending: true })
       .order('price', { ascending: true });
 
     if (error) {
-      setError(
-        'ไม่สามารถโหลดสินค้าได้: ' + error.message
-      );
+      setError('ไม่สามารถโหลดสินค้าได้: ' + error.message);
       setProducts([]);
     } else {
       setProducts(data || []);
@@ -55,29 +50,12 @@ export default function SellPage() {
       String(product.id) === String(selectedProductId)
   );
 
+  const stock = Number(selectedProduct?.stock || 0);
+
   const totalPrice =
-    selectedProduct && quantity > 0
-      ? Number(selectedProduct.price || 0) *
-        Number(quantity)
+    selectedProduct && selectedProduct.price !== null
+      ? Number(selectedProduct.price) * Number(quantity)
       : 0;
-
-  function handleProductChange(e) {
-    setSelectedProductId(e.target.value);
-    setQuantity(1);
-    setMessage('');
-    setError('');
-  }
-
-  function handleQuantityChange(e) {
-    const value = Number(e.target.value);
-
-    setQuantity(
-      Number.isInteger(value) && value >= 1 ? value : 1
-    );
-
-    setMessage('');
-    setError('');
-  }
 
   async function handleSell(e) {
     e.preventDefault();
@@ -91,26 +69,32 @@ export default function SellPage() {
     }
 
     if (selectedProduct.price === null) {
-      setError(
-        'สินค้านี้เป็นแบบสอบถามราคา ไม่สามารถขายผ่านระบบได้'
-      );
+      setError('สินค้านี้ไม่มีราคา กรุณาสอบถามราคาก่อน');
       return;
     }
 
     const sellQuantity = Number(quantity);
 
-    if (
-      !Number.isInteger(sellQuantity) ||
-      sellQuantity < 1
-    ) {
-      setError('กรุณากรอกจำนวนที่ถูกต้อง');
+    if (!Number.isInteger(sellQuantity) || sellQuantity <= 0) {
+      setError('จำนวนต้องเป็นเลขจำนวนเต็มมากกว่า 0');
+      return;
+    }
+
+    // ตรวจสอบ Stock
+    if (sellQuantity > stock) {
+      setError(
+        `สินค้าไม่เพียงพอ คงเหลือ ${stock} ชิ้น`
+      );
       return;
     }
 
     setSelling(true);
 
-    const total =
-      Number(selectedProduct.price) * sellQuantity;
+    const total = Number(selectedProduct.price) * sellQuantity;
+
+    // ==========================================
+    // 1. บันทึกประวัติการขาย
+    // ==========================================
 
     const { error: saleError } = await supabase
       .from('sales')
@@ -127,7 +111,7 @@ export default function SellPage() {
 
     if (saleError) {
       setError(
-        'บันทึกรายการขายไม่สำเร็จ: ' +
+        'บันทึกการขายไม่สำเร็จ: ' +
           saleError.message
       );
 
@@ -135,190 +119,298 @@ export default function SellPage() {
       return;
     }
 
+    // ==========================================
+    // 2. หัก Stock
+    // ==========================================
+
+    const newStock = stock - sellQuantity;
+
+    const { error: stockError } = await supabase
+      .from('products')
+      .update({
+        stock: newStock,
+      })
+      .eq('id', selectedProduct.id);
+
+    if (stockError) {
+      setError(
+        'บันทึกการขายแล้ว แต่หัก Stock ไม่สำเร็จ: ' +
+          stockError.message
+      );
+
+      setSelling(false);
+      return;
+    }
+
+    // ==========================================
+    // 3. แสดงผลสำเร็จ
+    // ==========================================
+
     setMessage(
-      `เติม ${selectedProduct.game} - ${selectedProduct.package_name} จำนวน ${sellQuantity} รายการ สำเร็จ ยอดรวม ${total.toLocaleString(
-        'th-TH'
-      )} บาท`
+      `ขายสำเร็จ ${sellQuantity} ชิ้น รวม ฿${total.toLocaleString()} | คงเหลือ ${newStock} ชิ้น`
     );
 
     setQuantity(1);
+
+    // โหลด Stock ใหม่
+    await fetchProducts();
+
     setSelling(false);
   }
 
-  if (loading) {
-    return (
-      <div>
-        <h1>เติมเกม / ขายสินค้า</h1>
-
-        <div className="loading">
-          กำลังโหลดสินค้า...
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div>
-      <h1>เติมเกม / ขายสินค้า</h1>
+    <main
+      style={{
+        maxWidth: '800px',
+        margin: '0 auto',
+        padding: '30px 20px',
+        fontFamily: 'Arial, sans-serif',
+      }}
+    >
+      <h1>ขายสินค้า</h1>
 
-      <p className="text-muted">
-        เลือกเกม Server และแพ็กเกจที่ต้องการขาย
-      </p>
-
-      {error && (
-        <div
-          className="card text-danger"
-          style={{
-            marginBottom: '16px',
-            background: '#fef2f2',
-          }}
-        >
-          {error}
-        </div>
-      )}
-
-      {message && (
-        <div
-          className="card text-success"
-          style={{
-            marginBottom: '16px',
-            background: '#f0fdf4',
-          }}
-        >
-          {message}
-        </div>
-      )}
-
-      {products.length === 0 ? (
-        <div className="card empty">
-          ยังไม่มีสินค้าที่เปิดขาย
-          <br />
-          กรุณาเพิ่มสินค้าในหน้าจัดการสินค้า
-        </div>
+      {loading ? (
+        <p>กำลังโหลดสินค้า...</p>
+      ) : products.length === 0 ? (
+        <p>ยังไม่มีสินค้าที่เปิดขาย</p>
       ) : (
-        <div
-          className="card"
+        <form
+          onSubmit={handleSell}
           style={{
-            maxWidth: '650px',
-            margin: '0 auto',
+            border: '1px solid #ddd',
+            borderRadius: '12px',
+            padding: '25px',
           }}
         >
-          <form onSubmit={handleSell}>
-            <div className="form-group">
-              <label>เลือกแพ็กเกจ</label>
+          {/* =========================
+              PRODUCT
+          ========================= */}
 
-              <select
-                value={selectedProductId}
-                onChange={handleProductChange}
-              >
-                {products.map((product) => (
-                  <option
-                    key={product.id}
-                    value={product.id}
-                  >
-                    {product.game} | {product.server} |{' '}
-                    {product.package_name} |{' '}
-                    {product.price === null
-                      ? 'สอบถามราคา'
-                      : `${Number(
-                          product.price
-                        ).toLocaleString('th-TH')} บาท`}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div style={{ marginBottom: '20px' }}>
+            <label
+              style={{
+                display: 'block',
+                marginBottom: '8px',
+                fontWeight: 'bold',
+              }}
+            >
+              สินค้า
+            </label>
 
-            {selectedProduct && (
-              <div
-                className="card"
+            <select
+              value={selectedProductId}
+              onChange={(e) => {
+                setSelectedProductId(e.target.value);
+                setQuantity(1);
+                setMessage('');
+                setError('');
+              }}
+              style={{
+                width: '100%',
+                padding: '10px',
+                fontSize: '16px',
+              }}
+            >
+              {products.map((product) => (
+                <option
+                  key={product.id}
+                  value={product.id}
+                >
+                  {product.game} | {product.server} |{' '}
+                  {product.package_name} | ฿
+                  {product.price === null
+                    ? 'สอบถามราคา'
+                    : Number(
+                        product.price
+                      ).toLocaleString()}
+                  {' '}| เหลือ {product.stock || 0}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* =========================
+              PRODUCT INFO
+          ========================= */}
+
+          {selectedProduct && (
+            <div
+              style={{
+                background: '#f5f5f5',
+                borderRadius: '10px',
+                padding: '15px',
+                marginBottom: '20px',
+              }}
+            >
+              <p>
+                <strong>SKU:</strong>{' '}
+                {selectedProduct.sku}
+              </p>
+
+              <p>
+                <strong>เกม:</strong>{' '}
+                {selectedProduct.game}
+              </p>
+
+              <p>
+                <strong>Server:</strong>{' '}
+                {selectedProduct.server}
+              </p>
+
+              <p>
+                <strong>แพ็กเกจ:</strong>{' '}
+                {selectedProduct.package_name}
+              </p>
+
+              <p>
+                <strong>ราคาต่อชิ้น:</strong>{' '}
+                ฿
+                {Number(
+                  selectedProduct.price || 0
+                ).toLocaleString()}
+              </p>
+
+              <p
                 style={{
-                  marginBottom: '20px',
-                  background: '#f8f9fa',
+                  fontSize: '18px',
+                  fontWeight: 'bold',
+                  color:
+                    stock > 0 ? 'green' : 'red',
                 }}
               >
-                <div>
-                  <strong>เกม:</strong>{' '}
-                  {selectedProduct.game}
-                </div>
+                คงเหลือ: {stock} ชิ้น
+              </p>
+            </div>
+          )}
 
-                <div>
-                  <strong>Server:</strong>{' '}
-                  {selectedProduct.server}
-                </div>
+          {/* =========================
+              QUANTITY
+          ========================= */}
 
-                <div>
-                  <strong>แพ็กเกจ:</strong>{' '}
-                  {selectedProduct.package_name}
-                </div>
+          <div style={{ marginBottom: '20px' }}>
+            <label
+              style={{
+                display: 'block',
+                marginBottom: '8px',
+                fontWeight: 'bold',
+              }}
+            >
+              จำนวน
+            </label>
 
-                <div style={{ marginTop: '8px' }}>
-                  <strong>ราคา:</strong>{' '}
-                  {selectedProduct.price === null
-                    ? 'สอบถามราคา'
-                    : `${Number(
-                        selectedProduct.price
-                      ).toLocaleString('th-TH')} บาท`}
-                </div>
-              </div>
-            )}
+            <input
+              type="number"
+              min="1"
+              max={stock}
+              value={quantity}
+              onChange={(e) =>
+                setQuantity(e.target.value)
+              }
+              style={{
+                width: '100%',
+                padding: '10px',
+                fontSize: '18px',
+                boxSizing: 'border-box',
+              }}
+            />
+          </div>
 
-            <div className="form-group">
-              <label>จำนวน</label>
+          {/* =========================
+              TOTAL
+          ========================= */}
 
-              <input
-                type="number"
-                min="1"
-                step="1"
-                value={quantity}
-                onChange={handleQuantityChange}
-              />
+          <div
+            style={{
+              borderTop: '1px solid #ddd',
+              paddingTop: '20px',
+              marginBottom: '20px',
+            }}
+          >
+            <div
+              style={{
+                fontSize: '16px',
+                marginBottom: '5px',
+              }}
+            >
+              จำนวน: {Number(quantity) || 0} ชิ้น
             </div>
 
             <div
               style={{
-                padding: '16px',
-                background: '#f8f9fa',
-                borderRadius: '8px',
-                marginBottom: '20px',
+                fontSize: '26px',
+                fontWeight: 'bold',
               }}
             >
-              <div className="text-muted">
-                ยอดรวม
-              </div>
-
-              <div
-                style={{
-                  fontSize: '32px',
-                  fontWeight: '700',
-                }}
-              >
-                {totalPrice.toLocaleString('th-TH', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}{' '}
-                บาท
-              </div>
+              รวม: ฿{totalPrice.toLocaleString()}
             </div>
+          </div>
 
-            <button
-              className="btn"
-              type="submit"
-              disabled={
-                selling ||
-                !selectedProduct ||
-                selectedProduct.price === null
-              }
+          {/* =========================
+              MESSAGE
+          ========================= */}
+
+          {message && (
+            <div
               style={{
-                width: '100%',
+                background: '#e8f5e9',
+                color: '#2e7d32',
+                padding: '12px',
+                borderRadius: '8px',
+                marginBottom: '15px',
               }}
             >
-              {selling
-                ? 'กำลังบันทึก...'
-                : 'ยืนยันการขาย'}
-            </button>
-          </form>
-        </div>
+              {message}
+            </div>
+          )}
+
+          {error && (
+            <div
+              style={{
+                background: '#ffebee',
+                color: '#c62828',
+                padding: '12px',
+                borderRadius: '8px',
+                marginBottom: '15px',
+              }}
+            >
+              {error}
+            </div>
+          )}
+
+          {/* =========================
+              SELL BUTTON
+          ========================= */}
+
+          <button
+            type="submit"
+            disabled={
+              selling ||
+              !selectedProduct ||
+              stock <= 0
+            }
+            style={{
+              width: '100%',
+              padding: '14px',
+              fontSize: '18px',
+              fontWeight: 'bold',
+              cursor:
+                selling || stock <= 0
+                  ? 'not-allowed'
+                  : 'pointer',
+              opacity:
+                selling || stock <= 0
+                  ? 0.6
+                  : 1,
+            }}
+          >
+            {selling
+              ? 'กำลังบันทึก...'
+              : stock <= 0
+              ? 'สินค้าหมด'
+              : 'ขายสินค้า'}
+          </button>
+        </form>
       )}
-    </div>
+    </main>
   );
 }
